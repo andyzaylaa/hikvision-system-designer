@@ -3,15 +3,19 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import UPLOAD_PATH, settings
 from app.database import init_db, async_session
 from app.routers import projects, drawings, products, boq, reports
 from app.services.product_catalog import product_catalog
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,6 +57,9 @@ app.include_router(boq.router)
 app.include_router(reports.router)
 
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_PATH)), name="uploads")
+
+if STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="frontend_assets")
 
 
 @app.get("/api/health")
@@ -99,3 +106,15 @@ async def get_symbol_library():
             ],
         }
     }
+
+
+@app.get("/{full_path:path}")
+async def serve_frontend(request: Request, full_path: str):
+    """Serve the frontend for any non-API route (SPA catch-all)."""
+    file_path = STATIC_DIR / full_path
+    if file_path.is_file():
+        return FileResponse(file_path)
+    index = STATIC_DIR / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return {"detail": "Frontend not built. Run: cd frontend && npm install && npm run build"}
